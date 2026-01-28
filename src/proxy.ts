@@ -3,49 +3,49 @@ import { redis } from "./lib/redis";
 import { nanoid } from "nanoid";
 
 export const proxy = async (req: NextRequest) => {
+  const pathname = req.nextUrl.pathname;
+  const roomIdMatch = pathname.match(/^\/room\/([^/]+)$/);
 
-    const pathname = req.nextUrl.pathname;
-    const roomIdMatch = pathname.match(/^\/room\/([^/]+)$/);
+  if (!roomIdMatch) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
 
-    if (!roomIdMatch) {
-        return NextResponse.redirect(new URL("/", req.url));
+  const roomId = roomIdMatch[1];
+  const meta = await redis.hgetall<{ connected: string[]; createdAt: number }>(
+    `meta:${roomId}`,
+  );
 
-    }
+  if (!meta) {
+    return NextResponse.redirect(new URL("/?error=room-not-found", req.url));
+  }
 
-    const roomId = roomIdMatch[1];
-    const meta = await redis.hgetall<{connected: string[], 
-        createdAt:number}>(`meta:${roomId}`);
+  const existingToken = req.cookies.get("x-auth-token")?.value;
+  if (existingToken && meta.connected.includes(existingToken)) {
+    return NextResponse.next();
+  }
 
-    if (!meta) {
-        return NextResponse.redirect(new URL("/?error=room-not-found", req.url));
-    }
+  // User isn't allowed to join
+  if (meta.connected.length >= 2) {
+    return NextResponse.redirect(new URL("/?error=room-full", req.url));
+  }
 
-    const existingToken = req.cookies.get("x-auth-token")?.value;
-    if (existingToken && meta.connected.includes(existingToken)) {
-        return NextResponse.next();
-    }
+  const response = NextResponse.next();
+  const token = nanoid();
 
-    // User isn't allowed to join
-    if (meta.connected.length >= 2) {
-        return NextResponse.redirect(new URL("/?error=room-full", req.url));
-    }
-    const response = NextResponse.next();
-    const token = nanoid();
-
-    response.cookies.set("x-auth-token", token, {
-        path: "/",
-        httpOnly: true,
-        sameSite: "strict",
-        secure: process.env.NODE_ENV === "production",
-        maxAge: 60 * 60 * 24 * 7, // 1 week
-    });
-    await redis.hset(`meta:${roomId}`, {
-        ...meta,
-        connected: [...meta.connected, token],
-    });
-    return response;
+  response.cookies.set("x-auth-token", token, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 7, // 1 week
+  });
+  await redis.hset(`meta:${roomId}`, {
+    ...meta,
+    connected: [...meta.connected, token],
+  });
+  return response;
 };
 
 export const config = {
-    matcher: "/room/:path*",
+  matcher: "/room/:path*",
 };

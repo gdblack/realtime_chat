@@ -1,17 +1,21 @@
 "use client";
 
+import { useMutation } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
+import { client } from "@/lib/client";
+import { useUsername } from "@/hooks/use-username";
 
 function formatTimeRemaining(seconds: number) {
-  const mins = Math.floor(seconds / 60)
-  const secs = (seconds % 60).toString().padStart(2, '0');
+  const mins = Math.floor(seconds / 60);
+  const secs = (seconds % 60).toString().padStart(2, "0");
   return `${mins}:${secs}`;
 }
 
 const Page = () => {
   const params = useParams();
-  const { roomId } = params;
+  const roomId = params.roomId as string;
+  const { username } = useUsername();
 
   const [copyStatus, setCopyStatus] = useState("COPY");
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
@@ -19,6 +23,14 @@ const Page = () => {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const { mutate: sendMessage, isPending } = useMutation({
+    mutationFn: async ({ text }: { text: string }) => {
+      await client.messages.post(
+        { sender: username, text },
+        { query: { roomId } },
+      );
+    },
+  });
   const copyLink = () => {
     const url = `${window.location.href}/room/${roomId}`;
     navigator.clipboard.writeText(url);
@@ -27,71 +39,93 @@ const Page = () => {
   };
   return (
     <main className="flex flex-col h-screen max-h-screen overflow-hidden">
-      <header className="border-b border-zinc-800 p-4 flex 
+      <header
+        className="border-b border-zinc-800 p-4 flex 
       items-center 
       justify-between 
-      bg-zinc-900/30">
+      bg-zinc-900/30"
+      >
         <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-                <span className="text-xs text-zinc-500 uppercase">Room ID</span>
-                <div className="flex items-center gap-2">
-                    <span className="font-bold text-green-500">{roomId}</span>
-                    <button  className="text-[10px] bg-zinc-800 
+          <div className="flex flex-col">
+            <span className="text-xs text-zinc-500 uppercase">Room ID</span>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-green-500">{roomId}</span>
+              <button
+                className="text-[10px] bg-zinc-800 
                     hover:bg-zinc-700 px-2 py-0.5 
-                    rounded hover:text-zinc-200 transition-colors" 
-                    onClick={copyLink}>
-                        {copyStatus}
-                    </button>
-                </div>
+                    rounded hover:text-zinc-200 transition-colors"
+                onClick={copyLink}
+              >
+                {copyStatus}
+              </button>
             </div>
-            <div className="h-8 w-px bg-zinc-800"/>
-            <div className="flex flex-col">
-                <span className="text-xs text-zinc-500 uppercase">Self-Destruct</span>
-                <span className={`text-sm font-bold flex-items-center gap-2 ${timeRemaining !== null && timeRemaining <= 60 ? 'text-red-500' : 'text-amber-500'}`}>
-                    {timeRemaining !== null ? `${formatTimeRemaining(timeRemaining)}` : '--:--'}
-                </span>
-            </div>
+          </div>
+          <div className="h-8 w-px bg-zinc-800" />
+          <div className="flex flex-col">
+            <span className="text-xs text-zinc-500 uppercase">
+              Self-Destruct
+            </span>
+            <span
+              className={`text-sm font-bold flex-items-center gap-2 ${timeRemaining !== null && timeRemaining <= 60 ? "text-red-500" : "text-amber-500"}`}
+            >
+              {timeRemaining !== null
+                ? `${formatTimeRemaining(timeRemaining)}`
+                : "--:--"}
+            </span>
+          </div>
         </div>
         <button className="text-xs bg-zinc-800 hover:bg-red-600 px-3 py-1.5 rounded text-zinc-400 hover:text-white font-bold transition-all group flex items-center gap-2 disabled:opacity-50">
-            <span className="group-hover:animate-pulse">
-                &#128163;
-            </span>
-            DESTROY NOW
+          <span className="group-hover:animate-pulse">&#128163;</span>
+          DESTROY NOW
         </button>
       </header>
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin"></div>
 
-      <div className="p-4 border-t 
+      <div
+        className="p-4 border-t 
       border-zinc-800 
-      bg-zinc-900/30">
-      <div className="flex gap-4">
-        <div className="flex-1 relative group">
-            <span className="absolute 
+      bg-zinc-900/30"
+      >
+        <div className="flex gap-4">
+          <div className="flex-1 relative group">
+            <span
+              className="absolute 
             left-4 
             top-1/2 
             -translate-y-1/2 
             text-green-500 
-            animate-pulse">
-            {">"}</span>
-            <input type="text" value={input} 
-            onChange={(e) => setInput(e.target.value)} 
-            onKeyDown={(e) => {
+            animate-pulse"
+            >
+              {">"}
+            </span>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
                 if (e.key === "Enter" && input.trim()) {
-                    // TODO: SEND MESSAGE
-                    inputRef.current?.focus();
+                  sendMessage({ text: input });
+                  inputRef.current?.focus();
                 }
-            }}
-            placeholder="Type message..."
-            className="w-full bg-black border
+              }}
+              placeholder="Type message..."
+              className="w-full bg-black border
              border-zinc-800 
              focus:border-zinc-700 
              focus:outline-none 
              transition-colors 
              text-zinc-100 
              placeholder:text-zinc-700 
-             py-3 pl-8 pr-4 text-sm"/>
-        </div>
-        <button className="bg-zinc-800 
+             py-3 pl-8 pr-4 text-sm"
+            />
+          </div>
+          <button
+            onClick={() => {
+              sendMessage({ text: input });
+              inputRef.current?.focus();
+            }}
+            disabled={!input.trim() || isPending}
+            className="bg-zinc-800 
         text-zinc-400 
         px-6 
         text-sm font-bold 
@@ -99,10 +133,11 @@ const Page = () => {
         transition-all 
         disabled:opacity-50 
         disabled:cursor-not-allowed 
-        cursor-pointer">
+        cursor-pointer"
+          >
             SEND
-        </button>
-      </div>
+          </button>
+        </div>
       </div>
     </main>
   );
